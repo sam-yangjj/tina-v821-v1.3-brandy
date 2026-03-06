@@ -1,0 +1,96 @@
+# Copyright (c) 2019-2025 Allwinner Technology Co., Ltd. ALL rights reserved.
+#
+# Allwinner is a trademark of Allwinner Technology Co.,Ltd., registered in
+# the people's Republic of China and other countries.
+# All Allwinner Technology Co.,Ltd. trademarks are used with permission.
+#
+# DISCLAIMER
+# THIRD PARTY LICENCES MAY BE REQUIRED TO IMPLEMENT THE SOLUTION/PRODUCT.
+# IF YOU NEED TO INTEGRATE THIRD PARTY’S TECHNOLOGY (SONY, DTS, DOLBY, AVS OR MPEGLA, ETC.)
+# IN ALLWINNERS’SDK OR PRODUCTS, YOU SHALL BE SOLELY RESPONSIBLE TO OBTAIN
+# ALL APPROPRIATELY REQUIRED THIRD PARTY LICENCES.
+# ALLWINNER SHALL HAVE NO WARRANTY, INDEMNITY OR OTHER OBLIGATIONS WITH RESPECT TO MATTERS
+# COVERED UNDER ANY REQUIRED THIRD PARTY LICENSE.
+# YOU ARE SOLELY RESPONSIBLE FOR YOUR USAGE OF THIRD PARTY’S TECHNOLOGY.
+#
+# THIS SOFTWARE IS PROVIDED BY ALLWINNER"AS IS" AND TO THE MAXIMUM EXTENT
+# PERMITTED BY LAW, ALLWINNER EXPRESSLY DISCLAIMS ALL WARRANTIES OF ANY KIND,
+# WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING WITHOUT LIMITATION REGARDING
+# THE TITLE, NON-INFRINGEMENT, ACCURACY, CONDITION, COMPLETENESS, PERFORMANCE
+# OR MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+# IN NO EVENT SHALL ALLWINNER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS, OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+# OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+#
+# Makefile for sunxi bootloader
+# wangwei@allwinnertech.com
+#
+
+include $(TOPDIR)/mk/config.mk
+LIB	=  libsecure.o
+
+ifeq ($(CPU), ads_rv32)
+STATIC_LIB = libsecure_ads_rv32.a
+else
+STATIC_LIB = libsecure.a
+endif
+
+ifeq ($(CFG_SUNXI_SBOOT_LIB), y)
+COBJS-$(CFG_SUNXI_CE_06)+= ce_0.6.o
+COBJS-$(CFG_SUNXI_CE_20)+= ce.o
+COBJS-$(CFG_SUNXI_CE_10)+= ce.o
+COBJS-$(CFG_SUNXI_CE_21)+= ce_2.1.o
+COBJS-$(CFG_SUNXI_CE_23)+= ce_2.3.o
+COBJS-$(CFG_SUNXI_CE_30)+= ce_3.0.o
+ifeq (x$(CFG_SUNXI_SMC_DISABLE),x)
+COBJS-$(CFG_SUNXI_SBOOT) += smc.o
+endif
+COBJS-$(CFG_SUNXI_RSA_SOFTWARE) += sunxi_rsa/nn.o
+COBJS-$(CFG_SUNXI_RSA_SOFTWARE) += sunxi_rsa/rsa.o
+COBJS-$(CFG_SUNXI_HASH_SOFTWARE) += sunxi_hash/sunxi_hash.o
+COBJS-$(CFG_SUNXI_ECC_SOFTWARE) += sunxi_ecc/ecc.o
+COBJS-$(CFG_SUNXI_ECC_SOFTWARE) += sunxi_ecc/ecc_dsa.o
+COBJS-$(CFG_SUNXI_EFUSE_SW_EBP) += sunxi_ebp/sunxi_ebp.o
+COBJS-$(CFG_SUNXI_EFUSE_SW_ECC_HAMMING) += sunxi_ecc_hamming/hamming7264.o
+COBJS-$(CFG_SUNXI_EFUSE_SW_ECC_HAMMING) += sunxi_ecc_hamming/sunxi_ecc.o
+
+#COBJS-y	+= spc.o
+COBJS-$(CFG_SUNXI_EFUSE)	+= efuse.o
+COBJS-$(CFG_SUNXI_TRNG) 	+= sunxi_trng.o
+
+endif
+SRCS	:= $(COBJS-y:.o=.c)
+OBJS	:= $(addprefix $(obj),$(COBJS-y))
+
+ifeq ($(CFG_SUNXI_SBOOT_LD_LIB),y)
+all:	$(obj).depend $(STATIC_LIB)
+
+$(STATIC_LIB):
+	@echo "Not building static library: $@"
+	$(AR) -x $(STATIC_LIB)
+
+ifeq ($(CFG_SUNXI_SBOOT_LIB), y)
+$(STATIC_LIB): $(LIB)
+	@echo "Building static library: $@"
+	$(AR) rcs $@ $^
+endif
+else
+all:	$(obj).depend $(LIB)
+endif
+
+$(LIB):	$(OBJS)
+	$(call cmd_link_o_target, $(OBJS))
+
+#########################################################################
+
+depend:	$(obj).depend
+.PHONY: depend
+
+# defines $(obj).depend target
+include $(TOPDIR)/mk/rules.mk

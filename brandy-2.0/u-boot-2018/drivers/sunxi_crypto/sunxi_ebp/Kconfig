@@ -1,0 +1,3 @@
+config SUNXI_EBP_SOFTWARE
+	bool "sunxi ebp software"
+	default n

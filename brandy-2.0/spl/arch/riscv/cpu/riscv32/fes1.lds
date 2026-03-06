@@ -1,0 +1,40 @@
+OUTPUT_FORMAT("elf32-littleriscv", "elf32-littleriscv", "elf32-littleriscv")
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+SECTIONS
+{
+	. = FES1ADDR;
+	. = ALIGN(4);
+
+	.head   :
+	{
+		main/fes1_head.o	(.rodata)
+	}
+	.text :
+	{
+		CPUDIR/fes1_entry.o (.text)
+		*(.text)
+	}
+	. = ALIGN(16);
+  	.rodata : { *(.rodata) }
+	. = ALIGN(16);
+  	.data : { *(.data) }
+
+	. = ALIGN(4);
+	.bss :
+	{
+	fes1_res_addr = .;
+	__bss_start = .;
+		*(.sbss)
+		*(.dynbss)
+		*(.bss)
+		*(.bss.*)
+	}
+	. = ALIGN(4);
+	__bss_end = .;
+
+	_end = .;
+}
+
+
+

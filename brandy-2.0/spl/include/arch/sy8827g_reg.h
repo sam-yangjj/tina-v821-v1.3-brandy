@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 2019-2025 Allwinner Technology Co., Ltd. ALL rights reserved.
+ *
+ * Allwinner is a trademark of Allwinner Technology Co.,Ltd., registered in
+ * the people's Republic of China and other countries.
+ * All Allwinner Technology Co.,Ltd. trademarks are used with permission.
+ *
+ * DISCLAIMER
+ * THIRD PARTY LICENCES MAY BE REQUIRED TO IMPLEMENT THE SOLUTION/PRODUCT.
+ * IF YOU NEED TO INTEGRATE THIRD PARTY’S TECHNOLOGY (SONY, DTS, DOLBY, AVS OR MPEGLA, ETC.)
+ * IN ALLWINNERS’SDK OR PRODUCTS, YOU SHALL BE SOLELY RESPONSIBLE TO OBTAIN
+ * ALL APPROPRIATELY REQUIRED THIRD PARTY LICENCES.
+ * ALLWINNER SHALL HAVE NO WARRANTY, INDEMNITY OR OTHER OBLIGATIONS WITH RESPECT TO MATTERS
+ * COVERED UNDER ANY REQUIRED THIRD PARTY LICENSE.
+ * YOU ARE SOLELY RESPONSIBLE FOR YOUR USAGE OF THIRD PARTY’S TECHNOLOGY.
+ *
+ *
+ * THIS SOFTWARE IS PROVIDED BY ALLWINNER"AS IS" AND TO THE MAXIMUM EXTENT
+ * PERMITTED BY LAW, ALLWINNER EXPRESSLY DISCLAIMS ALL WARRANTIES OF ANY KIND,
+ * WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING WITHOUT LIMITATION REGARDING
+ * THE TITLE, NON-INFRINGEMENT, ACCURACY, CONDITION, COMPLETENESS, PERFORMANCE
+ * OR MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * IN NO EVENT SHALL ALLWINNER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS, OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/*
+ * Copyright (C) 2016 Allwinner.
+ * wangwei <wangwei@allwinnertech.com>
+ *
+ * SUNXI AXP21  Driver
+ *
+ */
+
+#ifndef __SY8827G_H__
+#define __SY8827G_H__
+
+#include <arch/axp.h>
+
+#define SY8827G_CHIP_ID             (0x80)
+
+#ifdef CFG_SUNXI_TWI
+#define SY8827G_DEVICE_ADDR		400000
+#define SY8827G_RUNTIME_ADDR		(0x60)
+#else
+#define SY8827G_DEVICE_ADDR		(0x3A3)
+#define SY8827G_RUNTIME_ADDR		(0x60)
+#endif
+
+/* List of registers for sy8827g */
+#define SY8827G_VSEL0		0x00
+#define SY8827G_VSEL1		0x01
+#define SY8827G_CTRL		0x02
+#define SY8827G_ID1		    0x03
+#define SY8827G_ID2		    0x04
+#define SY8827G_TCS_PGOOD	0x05
+
+int sy8827g_set_pll_voltage(int set_vol);
+int sy8827g_ext_init(u8 power_mode);
+
+typedef struct _ext_step_info {
+	int step_min_vol;
+	int step_max_vol;
+	int step_val;
+	u32 regation;
+} _ext_step_info;
+
+typedef struct _ext_contrl_info {
+	char name[16];
+
+	int min_vol;
+	int max_vol;
+	u32 cfg_reg_addr;
+	u32 cfg_reg_mask;
+	u32 ctrl_reg_addr;
+	u32 ctrl_bit_ofs;
+	u32 reg_addr_offest;
+	_ext_step_info ext_step_tbl[4];
+
+} ext_contrl_info;
+
+#endif /* __SY8827G_REGS_H__ */
+

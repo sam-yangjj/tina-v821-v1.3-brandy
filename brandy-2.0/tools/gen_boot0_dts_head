@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+
+import os, sys
+import argparse
+import re
+import subprocess
+
+parser = argparse.ArgumentParser()
+parser.add_argument("buildconfig", default="../.buildconfig",
+            help="the buildconfig file")
+parser.add_argument("header_file", default="./autogen_boot0_dts_header.h",
+            help="the output header file")
+args = parser.parse_args()
+
+if not os.path.exists(args.buildconfig):
+    print("%s not exists" % args.buildconfig)
+    sys.exit(1)
+
+configs = {}
+kernel_dts_path = None
+uboot_dts_path = None
+board_config_dir = None
+output_ctx = None
+
+# ------------------------------------------------------------------------------------
+
+def parse_dts_reserved_mem(tree, node_path):
+    global output_ctx
+    reserved_list = []
+
+    node = tree[node_path]
+    if 'subnode' in node.keys():
+        for sub in node['subnode']:
+            subnode = tree[node_path + '/' + sub]
+            if 'reg' not in subnode['property'].keys():
+                continue
+            node_name = subnode['name']
+            reg = subnode['property']['reg']['val']
+            # reg format: <addr_hi addr_lo size_hi size_lo>
+            reg = reg.replace('<', '')
+            reg = reg.replace('>', '')
+            reg_info = reg.strip().split()
+            if len(reg_info) == 2:
+                addr = reg_info[0]
+                size = reg_info[1]
+            else:
+                addr = (int(reg_info[0], 16) << 32) + int(reg_info[1], 16)
+                size = (int(reg_info[2], 16) << 32) + int(reg_info[3], 16)
+            reserved_list.append([node_name, addr, size])
+
+    for item in reserved_list:
+        #output_ctx.write('#define DTS_RESERVED_%s\t\t%s\n' % (str(item[0]), item[0]))
+        output_ctx.write('#define DTS_RESERVED_%s_ADDR\t0x%x\n' % (str(item[0]), item[1]))
+        output_ctx.write('#define DTS_RESERVED_%s_SIZE\t0x%x\n\n' % (str(item[0]), item[2]))
+
+    output_ctx.write('#define DTS_RESERVED_ADDR(x)\t\tDTS_RESERVED_##x##_ADDR\n')
+    output_ctx.write('#define DTS_RESERVED_SIZE(x)\t\tDTS_RESERVED_##x##_SIZE\n')
+    output_ctx.write('\n')
+
+kernel_dts_target_node = {
+        "reserved-memory" : parse_dts_reserved_mem
+}
+
+def parse_dts_flashmap(tree, node_path):
+    global output_ctx
+
+    reserved_list = []
+
+    node = tree[node_path]
+    if 'subnode' in node.keys():
+        for sub in node['subnode']:
+            subnode = tree[node_path + '/' + sub]
+            node_name = subnode['name']
+
+            # Skip nand flash map parse
+            if 'nand' in node_name:
+                continue
+
+            if 'status' not in subnode['property'].keys():
+                continue
+
+            if subnode['property']['status']['val'] != '\"okay\"':
+                continue
+
+            target_prop = [
+                'logic_offset', 'secure_logic_offset', 'boot_param_start', 'boot_param_size',
+                'uboot_start', 'uboot_size'
+            ]
+            for prop_name in target_prop:
+                if prop_name in subnode['property'].keys():
+                    prop_val = subnode['property'][prop_name]['val']
+                    prop_val = prop_val.replace('<', '')
+                    prop_val = prop_val.replace('>', '').strip()
+                    output_ctx.write('#define DTS_FLASHMAP_{}_{}\t\t{}\n'.format(node_name, prop_name, prop_val))
+            output_ctx.write('\n')
+
+uboot_dts_target_node = {
+        "sunxi_flashmap" : parse_dts_flashmap
+}
+
+# ------------------------------------------------------------------------------------
+
+def do_cmd(cmd, env=None):
+    if env:
+        s = subprocess.Popen(cmd, env=env, shell=True)
+    else:
+        s = subprocess.Popen(cmd, shell=True)
+    return_code = s.wait()
+    return return_code
+
+def do_cmd_with_output(cmd, env=None):
+    if env:
+        s = subprocess.Popen(cmd, env=env, shell=True, stdout=subprocess.PIPE)
+    else:
+        s = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    output = s.communicate()[0]
+    return_code = s.returncode
+    return return_code, output.decode()
+
+def _load_config(filepath):
+    pattern = re.compile(r'^export ([^\s]+)=(.*)$')
+    with open(filepath, "r", encoding='utf-8') as f:
+        for line in f:
+            match = pattern.search(line)
+            if not match:
+                continue
+            key = match.group(1)
+            val = match.group(2)
+            configs[key] = val
+
+def init_cfgval():
+    global kernel_dts_path
+    global uboot_dts_path
+    global board_config_dir
+
+    board_config_dir = configs['LICHEE_BOARD_CONFIG_DIR']
+    linux_dev = configs['LICHEE_LINUX_DEV']
+    kerenl_ver = configs['LICHEE_KERN_VER']
+
+    if board_config_dir == None:
+        print("LICHEE_BOARD_CONFIG_DIR not set in %s" % args.buildconfig)
+        sys.exit(1)
+
+    kernel_dts_path = board_config_dir + '/{}/board.dts'.format(kerenl_ver)
+    if not os.path.exists(kernel_dts_path):
+        kernel_dts_path = board_config_dir + '/board.dts'
+    if not os.path.exists(kernel_dts_path):
+        print("%s is not exists" % kernel_dts_path)
+        sys.exit(1)
+
+    uboot_ver = configs['LICHEE_BRANDY_UBOOT_VER']
+    uboot_dts_path = board_config_dir + '/uboot-{}/uboot-board.dts'.format(uboot_ver)
+    if not os.path.exists(uboot_dts_path):
+        uboot_dts_path = board_config_dir + '/uboot-board.dts'
+    if not os.path.exists(uboot_dts_path):
+        print("%s is not exists" % uboot_dts_path)
+        uboot_dts_path = None
+
+def leading_whitespace_count(s):
+    expanded = s.expandtabs()
+    return len(expanded) - len(expanded.lstrip())
+
+def parse_dts(dts_file):
+    with open(dts_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    idx = 0
+    in_comment = False
+    in_property = False
+    tree = {}
+    node_line_list = []
+    continue_prop_name = None
+
+    # property_match1 = re.compile(r'^([\w:"-<>]+)\s*=?[ \t]*(.*);')
+    # # prop type1: xxx = yyy; /* */
+    property_type1 = re.compile(r'^([\w:"-<>]+)\s*=[ \t]*(.*);')
+    # prop type2: xxx = x1, x2,
+    #                  x3, x4;
+    property_type2_0 = re.compile(r'^([\w:"-<>]+)\s*=[ \t]*([^;]*)$')
+    property_type2_1 = re.compile(r'^([\t\w:"-<> ]+)\s*;') # include space
+    # prop type3: xxx;
+    property_type3 = re.compile(r'^([\w:"-<>]+)\s*;')  # except space
+
+    while idx < len(lines):
+        line = lines[idx].strip()
+        linenum = idx + 1
+        space_cnt = leading_whitespace_count(lines[idx])
+
+        if line.startswith('//'):
+            idx = idx + 1
+            continue
+        # comment: /* ... */
+        if line.startswith('/*') and line.endswith('*/'):
+            idx = idx + 1
+            continue
+        # comment: /* ...
+        if line.startswith('/*') and not line.endswith('*/'):
+            in_comment = True
+            idx = idx + 1
+            continue
+        # comment: ... */
+        if not line.startswith('/*') and line.endswith('*/') and in_comment == True:
+            in_comment = False
+            idx = idx + 1
+            continue
+        if in_comment:
+            idx = idx + 1
+            continue
+        if '{' in line and '}' in line:
+            print('ERROR: "{" and "}" are not supported on the same line %d' % (linenum))
+            return {}
+
+        # node start
+        if '{' in line:
+            # print("parse: [%d] %s" % (linenum, line))
+            node_name = line.split('{')[0].strip()
+            if node_name.startswith('&'):
+                # &xxxx {
+                node_name = node_name[1:]
+            elif ':' in node_name:
+                # xxxx: yyyy {
+                node_name = node_name.split(':')[0].strip()
+
+            if len(node_line_list) > 0:
+                tree[node_line_list[-1]]['subnode'].append(node_name)
+            if len(node_line_list) > 0:
+                full_node_name = node_line_list[-1] + '/' + node_name
+            else:
+                full_node_name = node_name
+            # print("%s node start: [%d] %s" % (" " * len(node_line_list), linenum, full_node_name))
+            if full_node_name not in tree.keys():
+                tree[full_node_name] = {}
+            tree[full_node_name]['name'] = node_name
+            tree[full_node_name]['subnode'] = []
+            node_line_list.append(full_node_name)
+        # node end
+        elif '}' in line:
+            full_node_name = node_line_list.pop()
+            # print("%s node end: [%d] %s" % (" " * len(node_line_list), linenum, full_node_name))
+
+            if not line.startswith('}'):
+                print('ERROR: unsupport %s, need }; in line %d' % (line, linenum))
+                return {}
+
+            # node_name = tree[full_node_name]['name']
+            # print("node_name: <%s> start:%d end:%d\n" % (node_name, tree[node_line]['start'], tree[node_line]['end']))
+
+            # print('node_name: %s [%d-%d]' % (node_name, tree[node_line]['start'], tree[node_line]['end']))
+            # if 'property' in tree[node_line].keys():
+            #     for k,v in tree[node_line]['property'].items():
+            #         print('\t%s = %s;' %(k, v))
+        # property range
+        else:
+            if len(node_line_list) == 0 or len(line) == 0:
+                idx = idx + 1
+                continue
+            # print("%s" % (line))
+            full_node_name = node_line_list[-1]
+
+            # prop type3: xxx;
+            match1 = property_type1.search(line)
+            match2_0 = property_type2_0.search(line)
+            match2_1 = property_type2_1.search(line)
+            match3 = property_type3.search(line)
+            if match1:
+                # prop type1: xxx = yyy;
+                prop_name = match1.group(1)
+                prop_val = match1.group(2)
+                # print('[%d] %s = |%s|' % (linenum, prop_name, prop_val))
+                if 'property' not in tree[full_node_name].keys():
+                    tree[full_node_name]['property'] = {}
+                tree[full_node_name]['property'][prop_name] = {}
+                tree[full_node_name]['property'][prop_name]['val'] = prop_val
+            elif match2_0:
+                # across lines property start
+                # suce as:
+                #   pins = "pin1", "pin2"
+                #           "pin3", "pin4";
+                # print('[%d] cross prop start %s' % (linenum, line))
+                if continue_prop_name != None:
+                    print('BUG: [%d] %s nest in %s' % (linenum, match2_0.group(1), continue_prop_name))
+                    return {}
+                prop_name = match2_0.group(1).strip()
+                prop_val = match2_0.group(2).strip()
+
+                if 'property' not in tree[full_node_name].keys():
+                    tree[full_node_name]['property'] = {}
+                tree[full_node_name]['property'][prop_name] = {}
+                tree[full_node_name]['property'][prop_name]['val'] = prop_val
+
+                continue_prop_name = match2_0.group(1)
+                in_property = True
+            elif match2_1 and in_property:
+                # across lines property end
+                # print('[%d] cross end %s' % (linenum, line))
+
+                prop_name = continue_prop_name
+                prop_val = tree[full_node_name]['property'][prop_name]['val'] + match2_1.group(1).strip()
+                tree[full_node_name]['property'][prop_name]['val'] = prop_val
+                continue_prop_name = None
+                in_property = False
+            elif match3:
+                # prop type3: xxx;
+                # print('[%d] bool prop: %s' % (linenum, line))
+                prop_name = match3.group(1).strip()
+                prop_val = None
+
+                if 'property' not in tree[full_node_name].keys():
+                    tree[full_node_name]['property'] = {}
+                tree[full_node_name]['property'][prop_name] = {}
+                tree[full_node_name]['property'][prop_name]['val'] = prop_val
+            elif in_property:
+                # print('[%d] cross prop %s: %s' % (linenum, continue_prop_name, line))
+                prop_name = continue_prop_name
+                prop_val = tree[full_node_name]['property'][prop_name]['val'] + line.strip()
+
+                tree[full_node_name]['property'][prop_name]['val'] = prop_val
+            else:
+                print('[%d] Unknow %s' % (linenum, line))
+
+        idx = idx + 1
+
+    return tree
+
+def dts_find_node(dts_tree, node_name):
+    match = []
+    # check match count
+    for k in dts_tree.keys():
+        if k.endswith(node_name):
+            match.append(k)
+
+    if len(match) > 1:
+        print('{} mathc multi: {}', node_name, match)
+
+    for k in dts_tree.keys():
+        if k.endswith(node_name):
+            return k
+
+    return None
+
+def find_target_file(search_path, file_name):
+    for path in search_path:
+        p = path + '/'  + file_name
+        if os.path.exists(p):
+            return p
+    return None
+
+def mk_dts_head():
+    global kernel_dts_path
+    global uboot_dts_path
+
+    if not os.path.exists(kernel_dts_path):
+        print('{} is not exist'.format(kernel_dts_path))
+        return
+
+    if not os.path.exists(uboot_dts_path):
+        print('{} is not exist'.format(uboot_dts_path))
+        return
+
+    '''
+        dts format
+        node_name: tree[full_node_name]['name']
+        property: tree[full_node_name]['property']
+            val: tree[full_node_name]['property'][prop_name]['val']
+    '''
+
+    tree = parse_dts(kernel_dts_path)
+    for target in kernel_dts_target_node.keys():
+        full_node_name = dts_find_node(tree, target)
+        if full_node_name == None:
+            continue
+        kernel_dts_target_node[target](tree, full_node_name)
+
+    tree = parse_dts(uboot_dts_path)
+    for target in uboot_dts_target_node.keys():
+        full_node_name = dts_find_node(tree, target)
+        if full_node_name == None:
+            continue
+        uboot_dts_target_node[target](tree, full_node_name)
+
+def prepare_output_ctx():
+    global output_ctx
+    output_ctx = open(args.header_file, 'w')
+    output_ctx.write('#ifndef _AUTOGEN_BOOT0_DTS_HEAD_H_\n')
+    output_ctx.write('#define _AUTOGEN_BOOT0_DTS_HEAD_H_\n')
+    output_ctx.write('\n')
+
+def unprepare_output_ctx():
+    global output_ctx
+    output_ctx.write('\n')
+    output_ctx.write('#endif\n')
+    output_ctx.close()
+
+if __name__ == "__main__":
+    _load_config(args.buildconfig)
+    init_cfgval()
+    prepare_output_ctx()
+    mk_dts_head()
+    unprepare_output_ctx()

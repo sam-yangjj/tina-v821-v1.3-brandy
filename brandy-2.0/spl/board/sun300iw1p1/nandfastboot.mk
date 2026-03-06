@@ -1,0 +1,45 @@
+
+#
+#config file for sun55iw3 fastboot
+#
+#stroage
+FILE_EXIST=$(shell if [ -f $(TOPDIR)/board/$(PLATFORM)/common.mk ]; then echo yes; else echo no; fi;)
+EXT_FILE_EXIST=$(shell if [ -f $(TOPDIR)/board/$(PLATFORM)/common$(LICHEE_BOARD).mk ]; then echo yes; else echo no; fi;)
+ifeq (x$(EXT_FILE_EXIST),xyes)
+include $(TOPDIR)/board/$(PLATFORM)/common$(LICHEE_BOARD).mk
+else ifeq (x$(FILE_EXIST),xyes)
+include $(TOPDIR)/board/$(PLATFORM)/common.mk
+else
+include $(TOPDIR)/board/$(CP_BOARD)/common.mk
+endif
+
+
+MODULE=nandfastboot
+CFG_SUNXI_FDT=y
+CFG_SUNXI_NAND=y
+CFG_SUNXI_SPINAND=y
+CFG_SUNXI_DMA=y
+CFG_SUNXI_ELF=y
+CFG_BOOT0_LOAD_KERNEL=y
+CFG_KERNEL_BOOTIMAGE=y
+CFG_LOAD_DTB_FROM_KERNEL=y
+CFG_KERNEL_CHECKSUM=n #y will check kernel checksum in bimage, but slower
+CFG_KERNEL_LOAD_ADDR=0x82000000
+CFG_SUNXI_FDT_ADDR=0x81d00000
+CFG_BIMAGE_SIZE=0x00a00000 #10MiByte
+CFG_SUNXI_BOOT_PARAM=y
+
+CFG_NAND_CPUS_LOAD=y
+CFG_NAND_RISCV_START=0x1940000
+CFG_NAND_RISCV_SIZE=0x400000
+
+CFG_BOOT0_LOAD_ISPPARM=y
+CFG_BOOT0_LOAD_FLASH=y
+CFG_NAND_ISPPARAM_START=0x2140000
+CFG_ISPPARAM_LOAD_ADDR=0x81CEE000
+CFG_ISPPARAM_SIZE=0x40000
+
+CFG_SUNXI_NO_UPDATE_FDT_CHOSEN=y
+
+#compression
+CFG_SUNXI_LZ4=y
