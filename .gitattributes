@@ -1,0 +1,2 @@
+brandy-2.0/tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz filter=lfs diff=lfs merge=lfs -text
+brandy-2.0/tools/toolchain/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.8.1.tar.xz filter=lfs diff=lfs merge=lfs -text
